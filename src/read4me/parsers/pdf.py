@@ -80,6 +80,42 @@ def _run_ocrmypdf(pdf_path: Path, *, language: str = "rus+eng") -> Path:
     return output_path
 
 
+def _extract_pdf_chapters_with_tesseract(pdf_path: Path, *, language: str = "rus+eng") -> list[PdfChapter]:
+    if shutil.which("tesseract") is None:
+        return []
+    try:
+        import fitz
+    except ImportError:
+        return []
+
+    chapters: list[PdfChapter] = []
+    document = fitz.open(str(pdf_path))
+    try:
+        for index in range(document.page_count):
+            page = document.load_page(index)
+            pixmap = page.get_pixmap(alpha=False, dpi=300)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+                image_path = Path(temp_file.name)
+            try:
+                pixmap.save(str(image_path))
+                result = subprocess.run(
+                    ["tesseract", str(image_path), "stdout", "-l", language, "--psm", "11"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                text = result.stdout.strip()
+            except subprocess.CalledProcessError:
+                continue
+            finally:
+                image_path.unlink(missing_ok=True)
+            if text and _looks_meaningful_text(text):
+                chapters.append(PdfChapter(title=f"Page {index + 1}", text=text))
+    finally:
+        document.close()
+    return chapters
+
+
 def parse_pdf_chapters(pdf_path: Path, *, ocr_fallback: bool = False) -> list[PdfChapter]:
     chapters = _extract_pdf_chapters(pdf_path)
 
@@ -89,6 +125,8 @@ def parse_pdf_chapters(pdf_path: Path, *, ocr_fallback: bool = False) -> list[Pd
         ocr_pdf_path = _run_ocrmypdf(pdf_path)
         try:
             ocr_chapters = _extract_pdf_chapters(ocr_pdf_path)
+            if not ocr_chapters:
+                ocr_chapters = _extract_pdf_chapters_with_tesseract(ocr_pdf_path)
         finally:
             if ocr_pdf_path.exists():
                 os.unlink(ocr_pdf_path)

@@ -81,3 +81,30 @@ def test_parse_pdf_chapters_uses_ocr_fallback_output(monkeypatch, tmp_path) -> N
     chapters = parse_pdf_chapters(input_pdf, ocr_fallback=True)
 
     assert chapters == [PdfChapter(title="Page 1", text="OCR recovered Russian text")]
+
+
+def test_parse_pdf_chapters_uses_tesseract_when_ocr_pdf_has_no_extractable_text(
+    monkeypatch, tmp_path
+) -> None:
+    input_pdf = tmp_path / "scan.pdf"
+    ocr_pdf = tmp_path / "scan-ocr.pdf"
+    input_pdf.write_bytes(b"%PDF-1.0")
+    ocr_pdf.write_bytes(b"%PDF-1.0")
+
+    class _ReaderByPath:
+        def __init__(self, path: Path) -> None:
+            if Path(path).name == "scan.pdf":
+                self.pages = [_FakePage("-\n./")]
+            else:
+                self.pages = [_FakePage("")]
+
+    monkeypatch.setattr("read4me.parsers.pdf.PdfReader", _ReaderByPath)
+    monkeypatch.setattr("read4me.parsers.pdf._run_ocrmypdf", lambda _src: ocr_pdf)
+    monkeypatch.setattr(
+        "read4me.parsers.pdf._extract_pdf_chapters_with_tesseract",
+        lambda _path: [PdfChapter(title="Page 1", text="Tesseract recovered text")],
+    )
+
+    chapters = parse_pdf_chapters(input_pdf, ocr_fallback=True)
+
+    assert chapters == [PdfChapter(title="Page 1", text="Tesseract recovered text")]

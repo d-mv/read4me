@@ -113,6 +113,28 @@ Example (Russian scanned PDF):
 uv run read4me convert ./book.pdf --out ./out --locale ru-RU --ocr-fallback
 ```
 
+## Troubleshooting
+
+If conversion fails with:
+- `DependencyError: cryptography>=3.1 is required for AES algorithm`
+
+Run:
+
+```bash
+uv sync
+```
+
+This installs Python dependencies required by `pypdf` for encrypted/object-stream PDFs.
+
+If conversion fails with:
+- `ValueError: No extractable PDF text found`
+
+The PDF is likely scanned/image-only. Retry with OCR:
+
+```bash
+uv run read4me convert ./book.pdf --out ./out --ocr-fallback
+```
+
 ## Testing
 
 ```bash
